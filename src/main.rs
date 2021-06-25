@@ -16,29 +16,50 @@ use scene::{ Hitable, Scene, Sphere, Material };
 
 const IMAGE_WIDTH: u32 = 1024;
 const IMAGE_HEIGHT: u32 = 1024;
-const PIXEL_SAMPLES: u32 = 128;
+const PIXEL_SAMPLES: u32 = 255;
 const MAX_DEPTH: u32 = 8;
+const LENS_RADIUS: f32 = 0.05;
+const FOCAL_DISTANCE: f32 = 5.0;
+
+fn generate_ray((x, y): (u32, u32), rng: &mut ThreadRng) -> Ray {
+    let pixel_sample_u: f32 = rng.gen();
+    let pixel_sample_v: f32 = rng.gen();
+    let pixel_u: f32 = (x as f32 + pixel_sample_u) / IMAGE_WIDTH as f32;
+    let pixel_v: f32 = 1.0 - (y as f32 + pixel_sample_v) / IMAGE_HEIGHT as f32;
+    let mut ray = Ray::new(
+        Vec3::new(0.0, 0.0, -5.0),
+        Vec3::new(-1.0 + pixel_u * 2.0, -1.0 + pixel_v * 2.0, 1.0),
+    );
+    ray.d.normalize();
+    let focus_point = ray.point_at(FOCAL_DISTANCE / ray.d.z);
+    let mut lens_sample = Vec3::new(0.0, 0.0, 0.0);
+    loop {
+        let (u, v): (f32, f32) = (rng.gen(), rng.gen());
+        lens_sample.x = 2.0 * u - 1.0;
+        lens_sample.y = 2.0 * v - 1.0;
+        lens_sample.z = 0.0;
+        if length_squared(&lens_sample) < 1.0 {
+            break;
+        }
+    }
+    lens_sample.normalize();
+    ray.o.x += lens_sample.x * LENS_RADIUS;
+    ray.o.y += lens_sample.y * LENS_RADIUS;
+    ray.d = &focus_point - &ray.o;
+    ray.d.normalize();
+    ray
+}
 
 fn render_scene(scene: &Scene, output_filename: &String) {
     let mut rng = rand::thread_rng();
-    let mut ray = Ray::new(
-        Vec3::new(0.0, 0.0, -5.0),
-        Vec3::new(0.0, 0.0, 1.0),
-    );
     let mut data = [0; IMAGE_WIDTH as usize * IMAGE_HEIGHT as usize * 4];
     let mut i = 0;
     for y in 0..IMAGE_HEIGHT {
         for x in 0..IMAGE_WIDTH {
             let mut color = Vec3::new(0.0, 0.0, 0.0);
             for _sample in 0..PIXEL_SAMPLES {
-                let ud: f32 = rng.gen();
-                let u: f32 = (x as f32 + ud as f32) / IMAGE_WIDTH as f32;
-                let vd: f32 = rng.gen();
-                let v: f32 = 1.0 - (y as f32 + vd) / IMAGE_HEIGHT as f32;
-                ray.d.x = -1.0 + u * 2.0;
-                ray.d.y = -1.0 + v * 2.0;
-                ray.d.z = 1.0;
-                let c = trace(&scene, &ray, &mut rng, 0);
+                let ray = generate_ray((x, y), &mut rng);
+                let c = trace_ray(&scene, &ray, &mut rng, 0);
                 color += &c;
             }
             color *= 1.0 / PIXEL_SAMPLES as f32;
@@ -58,7 +79,7 @@ fn render_scene(scene: &Scene, output_filename: &String) {
     png_writer.write_image_data(&data).unwrap();
 }
 
-fn trace(scene: &Scene, ray: &Ray, rng: &mut ThreadRng, depth: u32) -> Vec3 {
+fn trace_ray(scene: &Scene, ray: &Ray, rng: &mut ThreadRng, depth: u32) -> Vec3 {
     if depth >= MAX_DEPTH {
         return Vec3::new(0.0, 0.0, 0.0);
     }
@@ -82,7 +103,7 @@ fn trace(scene: &Scene, ray: &Ray, rng: &mut ThreadRng, depth: u32) -> Vec3 {
                 new_ray.o.x += 0.001 * new_ray.d.x;
                 new_ray.o.y += 0.001 * new_ray.d.y;
                 new_ray.o.z += 0.001 * new_ray.d.z;
-                let c = trace(scene, &new_ray, rng, depth + 1);
+                let c = trace_ray(scene, &new_ray, rng, depth + 1);
                 Vec3::new(
                     albedo.x * c.x,
                     albedo.y * c.y,
@@ -109,7 +130,7 @@ fn trace(scene: &Scene, ray: &Ray, rng: &mut ThreadRng, depth: u32) -> Vec3 {
                 new_ray.o.x += 0.001 * new_ray.d.x;
                 new_ray.o.y += 0.001 * new_ray.d.y;
                 new_ray.o.z += 0.001 * new_ray.d.z;
-                let c = trace(scene, &new_ray, rng, depth + 1);
+                let c = trace_ray(scene, &new_ray, rng, depth + 1);
                 Vec3::new(
                     albedo.x * c.x,
                     albedo.y * c.y,
@@ -141,6 +162,7 @@ fn trace(scene: &Scene, ray: &Ray, rng: &mut ThreadRng, depth: u32) -> Vec3 {
 
 fn main() {
     let spheres = vec!(
+        Sphere::new(Vec3::new(0., 7.0, 2.0), 5.0, Material::Metal(Vec3::new(0.75, 0.75, 0.5), 0.0)),
         Sphere::new(Vec3::new(0.0, 0.0, 0.0), 1.0, Material::Metal(Vec3::new(1.0, 1.0, 1.0), 0.0)),
         Sphere::new(Vec3::new(-2.1, 0.0, 0.0), 1.0, Material::Diffuse(Vec3::new(1.0, 1.0, 1.0))),
         Sphere::new(Vec3::new(2.1, 0.0, 0.0), 1.0, Material::Normal),
