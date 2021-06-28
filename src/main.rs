@@ -5,12 +5,14 @@ mod scene;
 extern crate png;
 extern crate rand;
 
+use std::sync::Arc;
 use std::path::Path;
 use std::fs::File;
 use std::io::BufWriter;
+use std::thread;
 use rand::{ Rng };
 use rand::rngs::ThreadRng;
-use vec3::{ Vec3, normalize, length_squared, reflect, refract, dot };
+use vec3::{ Vec3, normalize, length_squared, reflect };
 use ray::Ray;
 use scene::{ Hitable, Scene, Sphere, Material };
 
@@ -20,6 +22,20 @@ const PIXEL_SAMPLES: u32 = 255;
 const MAX_DEPTH: u32 = 8;
 const LENS_RADIUS: f32 = 0.05;
 const FOCAL_DISTANCE: f32 = 5.0;
+const NUM_THREADS: u32 = 16;
+
+struct Tile {
+    min_x: u32,
+    min_y: u32,
+    max_x: u32,
+    max_y: u32,
+}
+
+impl Tile {
+    fn new(min_x: u32, min_y: u32, max_x: u32, max_y: u32) -> Tile {
+        Tile { min_x, min_y, max_x, max_y }
+    }
+}
 
 fn generate_ray((x, y): (u32, u32), rng: &mut ThreadRng) -> Ray {
     let pixel_sample_u: f32 = rng.gen();
@@ -48,35 +64,6 @@ fn generate_ray((x, y): (u32, u32), rng: &mut ThreadRng) -> Ray {
     ray.d = &focus_point - &ray.o;
     ray.d.normalize();
     ray
-}
-
-fn render_scene(scene: &Scene, output_filename: &String) {
-    let mut rng = rand::thread_rng();
-    let mut data = [0; IMAGE_WIDTH as usize * IMAGE_HEIGHT as usize * 4];
-    let mut i = 0;
-    for y in 0..IMAGE_HEIGHT {
-        for x in 0..IMAGE_WIDTH {
-            let mut color = Vec3::new(0.0, 0.0, 0.0);
-            for _sample in 0..PIXEL_SAMPLES {
-                let ray = generate_ray((x, y), &mut rng);
-                let c = trace_ray(&scene, &ray, &mut rng, 0);
-                color += &c;
-            }
-            color *= 1.0 / PIXEL_SAMPLES as f32;
-            data[i + 0] = (255.99 * color.x.sqrt()) as u8;
-            data[i + 1] = (255.99 * color.y.sqrt()) as u8;
-            data[i + 2] = (255.99 * color.z.sqrt()) as u8;
-            data[i + 3] = 255;
-            i += 4;
-        }
-    }
-    let file = File::create(Path::new(&output_filename)).unwrap();
-    let ref mut buf_writer = BufWriter::new(file);
-    let mut encoder = png::Encoder::new(buf_writer, IMAGE_WIDTH, IMAGE_HEIGHT);
-    encoder.set_color(png::ColorType::RGBA);
-    encoder.set_depth(png::BitDepth::Eight);
-    let mut png_writer = encoder.write_header().unwrap();
-    png_writer.write_image_data(&data).unwrap();
 }
 
 fn trace_ray(scene: &Scene, ray: &Ray, rng: &mut ThreadRng, depth: u32) -> Vec3 {
@@ -160,17 +147,62 @@ fn trace_ray(scene: &Scene, ray: &Ray, rng: &mut ThreadRng, depth: u32) -> Vec3 
     }
 }
 
+fn render_tile(scene: Arc<Scene>, tile: &Tile) -> Vec<u8> {
+    let mut rng = rand::thread_rng();
+    let size = (tile.max_y - tile.min_y) * (tile.max_x - tile.min_x) * 4;
+    let mut output: Vec<u8> = vec![0; size as usize];
+    let mut i = 0;
+    for y in tile.min_y..tile.max_y {
+        for x in tile.min_x..tile.max_x {
+            let mut color = Vec3::new(0.0, 0.0, 0.0);
+            for _sample in 0..PIXEL_SAMPLES {
+                let ray = generate_ray((x, y), &mut rng);
+                let c = trace_ray(&scene, &ray, &mut rng, 0);
+                color += &c;
+            }
+            color *= 1.0 / PIXEL_SAMPLES as f32;
+            output[i + 0] = (255.99 * color.x.sqrt()) as u8;
+            output[i + 1] = (255.99 * color.y.sqrt()) as u8;
+            output[i + 2] = (255.99 * color.z.sqrt()) as u8;
+            output[i + 3] = 255;
+            i = i + 4;
+        }
+    }
+    output
+}
+
+fn render_scene(scene: Arc<Scene>, num_threads: u32) -> Vec<u8> {
+    let mut handles: Vec<std::thread::JoinHandle<Vec<u8>>> = Vec::new();
+    let tile_height = IMAGE_HEIGHT / num_threads;
+    for i in 0..num_threads {
+        let _scene = scene.clone();
+        handles.push(thread::spawn(move || { render_tile(_scene, &Tile::new(0, i * tile_height, IMAGE_WIDTH, (i + 1) * tile_height)) }));
+    }
+    let mut result: Vec<u8> = Vec::new();
+    for handle in handles {
+        let mut tile = handle.join().unwrap();
+        result.append(&mut tile);
+    }
+    result
+}
+
 fn main() {
-    let spheres = vec!(
-        Sphere::new(Vec3::new(0., 7.0, 2.0), 5.0, Material::Metal(Vec3::new(0.75, 0.75, 0.5), 0.0)),
+    let spheres: Vec<Sphere> = vec!(
+        Sphere::new(Vec3::new(0., 7.0, 2.0), 5.0, Material::Metal(Vec3::new(0.175, 0.75, 0.5), 0.0)),
         Sphere::new(Vec3::new(0.0, 0.0, 0.0), 1.0, Material::Metal(Vec3::new(1.0, 1.0, 1.0), 0.0)),
         Sphere::new(Vec3::new(-2.1, 0.0, 0.0), 1.0, Material::Diffuse(Vec3::new(1.0, 1.0, 1.0))),
         Sphere::new(Vec3::new(2.1, 0.0, 0.0), 1.0, Material::Normal),
         Sphere::new(Vec3::new(-1.5, -0.5, -2.5), 0.5, Material::Light(Vec3::new(1.0, 1.0, 0.0))),
         Sphere::new(Vec3::new(1.5, -0.5, -2.5), 0.5, Material::Metal(Vec3::new(1.0, 1.0, 1.0), 0.1)),
-        //Sphere::new(Vec3::new(0.0, -0.5, -2.5), 0.5, Material::Dielectric(Vec3::new(1.0, 1.0, 1.0), 1.25)),
         Sphere::new(Vec3::new(0.0, -100.0, 0.0), 99.0, Material::Diffuse(Vec3::new(0.9, 0.7, 0.5))),
     );
-    let scene = Scene::new(spheres);
-    render_scene(&scene, &String::from("output.png"));
+    let scene = Arc::new(Scene::new(spheres));
+    let buff = render_scene(scene, NUM_THREADS);
+    let file = File::create(Path::new(&String::from("output.png"))).unwrap();
+    let ref mut buf_writer = BufWriter::new(file);
+    let mut encoder = png::Encoder::new(buf_writer, IMAGE_WIDTH, IMAGE_HEIGHT);
+    encoder.set_color(png::ColorType::RGBA);
+    encoder.set_depth(png::BitDepth::Eight);
+    let mut png_writer = encoder.write_header().unwrap();
+    png_writer.write_image_data(&buff).unwrap();
 }
