@@ -6,6 +6,7 @@ pub enum Material {
     Diffuse(Vec3),
     Metal(Vec3, f32 /* roughness */),
     Light(Vec3),
+    Dielectric(f32 /* ior */),
     Normal,
 }
 

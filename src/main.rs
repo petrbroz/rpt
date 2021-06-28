@@ -12,7 +12,7 @@ use std::io::BufWriter;
 use std::thread;
 use rand::{ Rng };
 use rand::rngs::ThreadRng;
-use vec3::{ Vec3, normalize, length_squared, reflect };
+use vec3::{ Vec3, normalize, length_squared, reflect, dot, refract };
 use ray::Ray;
 use scene::{ Hitable, Scene, Sphere, Material };
 
@@ -124,6 +124,26 @@ fn trace_ray(scene: &Scene, ray: &Ray, rng: &mut ThreadRng, depth: u32) -> Vec3 
                     albedo.z * c.z,
                 )
             },
+            Material::Dielectric(ior) => {
+                let mut refraction_ratio = ior;
+                let mut normal = hit.n;
+                if dot(&ray.d, &hit.n) > 0.0 {
+                    refraction_ratio = 1.0 / ior;
+                    normal = -&normal;
+                };
+                let mut refracted = refract(&ray.d, &normal, refraction_ratio);
+                refracted.normalize();
+                let mut new_ray = Ray::new(hit.p, refracted);
+                new_ray.o.x += 0.001 * new_ray.d.x;
+                new_ray.o.y += 0.001 * new_ray.d.y;
+                new_ray.o.z += 0.001 * new_ray.d.z;
+                let c = trace_ray(scene, &new_ray, rng, depth + 1);
+                Vec3::new(
+                    1.0 * c.x,
+                    1.0 * c.y,
+                    1.0 * c.z,
+                )
+            },
             Material::Light(color) => {
                 color
             },
@@ -192,11 +212,13 @@ fn main() {
         Sphere::new(Vec3::new(0.0, 0.0, 0.0), 1.0, Material::Metal(Vec3::new(1.0, 1.0, 1.0), 0.0)),
         Sphere::new(Vec3::new(-2.1, 0.0, 0.0), 1.0, Material::Diffuse(Vec3::new(1.0, 1.0, 1.0))),
         Sphere::new(Vec3::new(2.1, 0.0, 0.0), 1.0, Material::Normal),
-        Sphere::new(Vec3::new(-1.5, -0.5, -2.5), 0.5, Material::Light(Vec3::new(1.0, 1.0, 0.0))),
+        //Sphere::new(Vec3::new(-1.5, -0.5, -2.5), 0.5, Material::Light(Vec3::new(1.0, 1.0, 0.0))),
+        Sphere::new(Vec3::new(-1.5, -0.5, -2.5), 0.5, Material::Dielectric(1.5)),
         Sphere::new(Vec3::new(1.5, -0.5, -2.5), 0.5, Material::Metal(Vec3::new(1.0, 1.0, 1.0), 0.1)),
         Sphere::new(Vec3::new(0.0, -100.0, 0.0), 99.0, Material::Diffuse(Vec3::new(0.9, 0.7, 0.5))),
     );
     let scene = Arc::new(Scene::new(spheres));
+
     let buff = render_scene(scene, NUM_THREADS);
     let file = File::create(Path::new(&String::from("output.png"))).unwrap();
     let ref mut buf_writer = BufWriter::new(file);
