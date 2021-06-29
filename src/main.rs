@@ -231,12 +231,12 @@ fn render_scene(scene: Arc<Scene>, num_threads: u32) -> Vec<u8> {
 
 fn main() {
     let spheres: Vec<Sphere> = vec!(
-        Sphere::new(Vec3::new(0., 7.0, 2.0), 5.0, Material::Metal(Vec3::new(0.175, 0.75, 0.5), 0.0)),
+        Sphere::new(Vec3::new(0., 7.0, 2.0), 5.0, Material::Metal(Vec3::new(0.9, 0.9, 0.9), 0.0)),
         Sphere::new(Vec3::new(0.0, 0.0, 0.0), 1.0, Material::Metal(Vec3::new(1.0, 1.0, 1.0), 0.0)),
-        Sphere::new(Vec3::new(-2.1, 0.0, 0.0), 1.0, Material::Diffuse(Vec3::new(1.0, 1.0, 1.0))),
+        Sphere::new(Vec3::new(-2.1, 0.0, 0.0), 1.0, Material::Glass(1.5)),
         Sphere::new(Vec3::new(2.1, 0.0, 0.0), 1.0, Material::Normal),
         //Sphere::new(Vec3::new(-1.5, -0.5, -2.5), 0.5, Material::Light(Vec3::new(1.0, 1.0, 0.0))),
-        Sphere::new(Vec3::new(-1.5, -0.5, -2.5), 0.5, Material::Glass(1.5)),
+        Sphere::new(Vec3::new(-1.5, -0.5, -2.5), 0.5, Material::Diffuse(Vec3::new(1.0, 1.0, 1.0))),
         Sphere::new(Vec3::new(1.5, -0.5, -2.5), 0.5, Material::Metal(Vec3::new(1.0, 1.0, 1.0), 0.1)),
         Sphere::new(Vec3::new(0.0, -100.0, 0.0), 99.0, Material::Diffuse(Vec3::new(0.9, 0.7, 0.5))),
     );
