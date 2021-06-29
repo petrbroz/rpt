@@ -1,6 +1,7 @@
 mod vec3;
 mod ray;
 mod scene;
+mod camera;
 
 extern crate png;
 extern crate rand;
@@ -15,13 +16,14 @@ use rand::rngs::ThreadRng;
 use vec3::{ Vec3, normalize, length_squared, reflect, dot, refract };
 use ray::Ray;
 use scene::{ Hitable, Scene, Sphere, Material };
+use camera::{ Camera, PerspectiveCamera };
 
 const IMAGE_WIDTH: u32 = 1024;
 const IMAGE_HEIGHT: u32 = 1024;
 const PIXEL_SAMPLES: u32 = 255;
 const MAX_DEPTH: u32 = 8;
-const LENS_RADIUS: f32 = 0.05;
-const FOCAL_DISTANCE: f32 = 5.0;
+const LENS_RADIUS: f32 = 0.1;
+const FOCAL_DISTANCE: f32 = 8.0;
 const NUM_THREADS: u32 = 16;
 
 struct Tile {
@@ -35,35 +37,6 @@ impl Tile {
     fn new(min_x: u32, min_y: u32, max_x: u32, max_y: u32) -> Tile {
         Tile { min_x, min_y, max_x, max_y }
     }
-}
-
-fn generate_ray((x, y): (u32, u32), rng: &mut ThreadRng) -> Ray {
-    let pixel_sample_u: f32 = rng.gen();
-    let pixel_sample_v: f32 = rng.gen();
-    let pixel_u: f32 = (x as f32 + pixel_sample_u) / IMAGE_WIDTH as f32;
-    let pixel_v: f32 = 1.0 - (y as f32 + pixel_sample_v) / IMAGE_HEIGHT as f32;
-    let mut ray = Ray::new(
-        Vec3::new(0.0, 0.0, -5.0),
-        Vec3::new(-1.0 + pixel_u * 2.0, -1.0 + pixel_v * 2.0, 1.0),
-    );
-    ray.d.normalize();
-    let focus_point = ray.point_at(FOCAL_DISTANCE / ray.d.z);
-    let mut lens_sample = Vec3::new(0.0, 0.0, 0.0);
-    loop {
-        let (u, v): (f32, f32) = (rng.gen(), rng.gen());
-        lens_sample.x = 2.0 * u - 1.0;
-        lens_sample.y = 2.0 * v - 1.0;
-        lens_sample.z = 0.0;
-        if length_squared(&lens_sample) < 1.0 {
-            break;
-        }
-    }
-    lens_sample.normalize();
-    ray.o.x += lens_sample.x * LENS_RADIUS;
-    ray.o.y += lens_sample.y * LENS_RADIUS;
-    ray.d = &focus_point - &ray.o;
-    ray.d.normalize();
-    ray
 }
 
 fn trace_ray(scene: &Scene, ray: &Ray, rng: &mut ThreadRng, depth: u32) -> Vec3 {
@@ -190,7 +163,7 @@ fn trace_ray(scene: &Scene, ray: &Ray, rng: &mut ThreadRng, depth: u32) -> Vec3 
     }
 }
 
-fn render_tile(scene: Arc<Scene>, tile: &Tile) -> Vec<u8> {
+fn render_tile(scene: Arc<Scene>, camera: Arc<PerspectiveCamera>, tile: &Tile) -> Vec<u8> {
     let mut rng = rand::thread_rng();
     let size = (tile.max_y - tile.min_y) * (tile.max_x - tile.min_x) * 4;
     let mut output: Vec<u8> = vec![0; size as usize];
@@ -199,7 +172,11 @@ fn render_tile(scene: Arc<Scene>, tile: &Tile) -> Vec<u8> {
         for x in tile.min_x..tile.max_x {
             let mut color = Vec3::new(0.0, 0.0, 0.0);
             for _sample in 0..PIXEL_SAMPLES {
-                let ray = generate_ray((x, y), &mut rng);
+                let pixel_sample_u: f32 = rng.gen();
+                let pixel_sample_v: f32 = rng.gen();
+                let pixel_u: f32 = (x as f32 + pixel_sample_u) / IMAGE_WIDTH as f32;
+                let pixel_v: f32 = 1.0 - (y as f32 + pixel_sample_v) / IMAGE_HEIGHT as f32;
+                let ray = camera.generate_ray(pixel_u - 0.5, pixel_v - 0.5, &mut rng);
                 let c = trace_ray(&scene, &ray, &mut rng, 0);
                 color += &c;
             }
@@ -214,12 +191,13 @@ fn render_tile(scene: Arc<Scene>, tile: &Tile) -> Vec<u8> {
     output
 }
 
-fn render_scene(scene: Arc<Scene>, num_threads: u32) -> Vec<u8> {
+fn render_scene(scene: Arc<Scene>, camera: Arc<PerspectiveCamera>, num_threads: u32) -> Vec<u8> {
     let mut handles: Vec<std::thread::JoinHandle<Vec<u8>>> = Vec::new();
     let tile_height = IMAGE_HEIGHT / num_threads;
     for i in 0..num_threads {
         let _scene = scene.clone();
-        handles.push(thread::spawn(move || { render_tile(_scene, &Tile::new(0, i * tile_height, IMAGE_WIDTH, (i + 1) * tile_height)) }));
+        let _camera = camera.clone();
+        handles.push(thread::spawn(move || { render_tile(_scene, _camera, &Tile::new(0, i * tile_height, IMAGE_WIDTH, (i + 1) * tile_height)) }));
     }
     let mut result: Vec<u8> = Vec::new();
     for handle in handles {
@@ -231,18 +209,32 @@ fn render_scene(scene: Arc<Scene>, num_threads: u32) -> Vec<u8> {
 
 fn main() {
     let spheres: Vec<Sphere> = vec!(
-        Sphere::new(Vec3::new(0., 7.0, 2.0), 5.0, Material::Metal(Vec3::new(0.9, 0.9, 0.9), 0.0)),
-        Sphere::new(Vec3::new(0.0, 0.0, 0.0), 1.0, Material::Metal(Vec3::new(1.0, 1.0, 1.0), 0.0)),
-        Sphere::new(Vec3::new(-2.1, 0.0, 0.0), 1.0, Material::Glass(1.5)),
-        Sphere::new(Vec3::new(2.1, 0.0, 0.0), 1.0, Material::Normal),
-        //Sphere::new(Vec3::new(-1.5, -0.5, -2.5), 0.5, Material::Light(Vec3::new(1.0, 1.0, 0.0))),
-        Sphere::new(Vec3::new(-1.5, -0.5, -2.5), 0.5, Material::Diffuse(Vec3::new(1.0, 1.0, 1.0))),
-        Sphere::new(Vec3::new(1.5, -0.5, -2.5), 0.5, Material::Metal(Vec3::new(1.0, 1.0, 1.0), 0.1)),
-        Sphere::new(Vec3::new(0.0, -100.0, 0.0), 99.0, Material::Diffuse(Vec3::new(0.9, 0.7, 0.5))),
+        Sphere::new(Vec3::new(0.0, -100.0, 0.0), 99.0, Material::Diffuse(Vec3::new(0.9, 0.9, 0.9))),
+
+        Sphere::new(Vec3::new(-2.5, 0.0, -2.5), 1.0, Material::Metal(Vec3::new(1.0, 1.0, 1.0), 0.0)),
+        Sphere::new(Vec3::new(-2.5, 0.0, 0.0),  1.0, Material::Metal(Vec3::new(1.0, 1.0, 1.0), 0.1)),
+        Sphere::new(Vec3::new(-2.5, 0.0, 2.5),  1.0, Material::Metal(Vec3::new(1.0, 1.0, 1.0), 0.2)),
+
+        Sphere::new(Vec3::new(0.0, 0.0, -2.5),  1.0, Material::Normal),
+        Sphere::new(Vec3::new(0.0, 0.0, 0.0),   1.0, Material::Diffuse(Vec3::new(1.0, 1.0, 1.0))),
+        Sphere::new(Vec3::new(0.0, 0.0, 2.5),   1.0, Material::Light(Vec3::new(1.0, 1.0, 0.0))),
+
+        Sphere::new(Vec3::new(2.5, 0.0, -2.5),  1.0, Material::Glass(2.0)),
+        Sphere::new(Vec3::new(2.5, 0.0, 0.0),   1.0, Material::Glass(1.75)),
+        Sphere::new(Vec3::new(2.5, 0.0, 2.5),   1.0, Material::Glass(1.5)),
     );
     let scene = Arc::new(Scene::new(spheres));
+    let camera = Arc::new(PerspectiveCamera::look_at(
+        Vec3::new(5.0, 5.0, 5.0),
+        Vec3::new(0.0, -1.0, 0.0),
+        Vec3::new(0.0, 1.0, 0.0),
+        60.0,
+        IMAGE_WIDTH as f32 / IMAGE_HEIGHT as f32,
+        FOCAL_DISTANCE,
+        LENS_RADIUS,
+    ));
 
-    let buff = render_scene(scene, NUM_THREADS);
+    let buff = render_scene(scene, camera, NUM_THREADS);
     let file = File::create(Path::new(&String::from("output.png"))).unwrap();
     let ref mut buf_writer = BufWriter::new(file);
     let mut encoder = png::Encoder::new(buf_writer, IMAGE_WIDTH, IMAGE_HEIGHT);
