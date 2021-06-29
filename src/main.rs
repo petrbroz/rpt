@@ -132,13 +132,30 @@ fn trace_ray(scene: &Scene, ray: &Ray, rng: &mut ThreadRng, depth: u32) -> Vec3 
                 } else {
                     normal = -&hit.n;
                 }
+
+                let schlick = {
+                    let mut v = -&ray.d;
+                    v.normalize();
+                    let cos_theta = (v.x * normal.x + v.y * normal.y + v.z * normal.z).min(1.0);
+                    let mut r0 = (1.0 - refraction_ratio) / (1.0 + refraction_ratio);
+                    r0 = r0 * r0;
+                    r0 + (1.0 - r0) * (1.0 - cos_theta).powi(5)
+                };
+                let rand: f32 = rng.gen();
+
                 let mut new_ray = if let Some(mut refracted) = refract(&ray.d, &normal, refraction_ratio) {
-                    refracted.normalize();
-                    Ray::new(hit.p, refracted)
+                    if schlick > rand {
+                        let mut reflected = reflect(&ray.d, &normal);
+                        reflected.normalize();
+                        Ray::new(hit.p, reflected)
+                    } else {
+                        refracted.normalize();
+                        Ray::new(hit.p, refracted)
+                    }
                 } else {
                     let mut reflected = reflect(&ray.d, &normal);
                     reflected.normalize();
-                    Ray::new(hit.p, reflected)
+                    Ray::new(hit.p, reflected)                
                 };
                 new_ray.o.x += 0.001 * new_ray.d.x;
                 new_ray.o.y += 0.001 * new_ray.d.y;
