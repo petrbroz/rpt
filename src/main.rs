@@ -97,7 +97,7 @@ fn trace_ray(scene: &Scene, ray: &Ray, rng: &mut ThreadRng, depth: u32) -> Vec3 
                     albedo.z * c.z,
                 )
             },
-            Material::Glass(ior) => {
+            Material::Glass(attenuation, ior) => {
                 let mut refraction_ratio = ior;
                 let mut normal = hit.n;
                 if dot(&ray.d, &hit.n) < 0.0 {
@@ -135,9 +135,9 @@ fn trace_ray(scene: &Scene, ray: &Ray, rng: &mut ThreadRng, depth: u32) -> Vec3 
                 new_ray.o.z += 0.001 * new_ray.d.z;
                 let c = trace_ray(scene, &new_ray, rng, depth + 1);
                 Vec3::new(
-                    1.0 * c.x,
-                    1.0 * c.y,
-                    1.0 * c.z,
+                    attenuation.x * c.x,
+                    attenuation.y * c.y,
+                    attenuation.z * c.z,
                 )
             },
             Material::Light(color) => {
@@ -212,16 +212,16 @@ fn main() {
         Sphere::new(Vec3::new(0.0, -100.0, 0.0), 99.0, Material::Diffuse(Vec3::new(0.9, 0.9, 0.9))),
 
         Sphere::new(Vec3::new(-2.5, 0.0, -2.5), 1.0, Material::Metal(Vec3::new(1.0, 1.0, 1.0), 0.0)),
-        Sphere::new(Vec3::new(-2.5, 0.0, 0.0),  1.0, Material::Metal(Vec3::new(1.0, 1.0, 1.0), 0.1)),
+        Sphere::new(Vec3::new(-2.5, 0.0, 0.0),  1.0, Material::Metal(Vec3::new(0.9, 0.6, 0.3), 0.1)),
         Sphere::new(Vec3::new(-2.5, 0.0, 2.5),  1.0, Material::Metal(Vec3::new(1.0, 1.0, 1.0), 0.2)),
 
         Sphere::new(Vec3::new(0.0, 0.0, -2.5),  1.0, Material::Normal),
         Sphere::new(Vec3::new(0.0, 0.0, 0.0),   1.0, Material::Diffuse(Vec3::new(1.0, 1.0, 1.0))),
         Sphere::new(Vec3::new(0.0, 0.0, 2.5),   1.0, Material::Light(Vec3::new(1.0, 1.0, 0.0))),
 
-        Sphere::new(Vec3::new(2.5, 0.0, -2.5),  1.0, Material::Glass(2.0)),
-        Sphere::new(Vec3::new(2.5, 0.0, 0.0),   1.0, Material::Glass(1.75)),
-        Sphere::new(Vec3::new(2.5, 0.0, 2.5),   1.0, Material::Glass(1.5)),
+        Sphere::new(Vec3::new(2.5, 0.0, -2.5),  1.0, Material::Glass(Vec3::new(1.0, 1.0, 1.0), 2.0)),
+        Sphere::new(Vec3::new(2.5, 0.0, 0.0),   1.0, Material::Glass(Vec3::new(0.3, 0.6, 0.9), 1.75)),
+        Sphere::new(Vec3::new(2.5, 0.0, 2.5),   1.0, Material::Glass(Vec3::new(1.0, 1.0, 1.0), 1.5)),
     );
     let scene = Arc::new(Scene::new(spheres));
     let camera = Arc::new(PerspectiveCamera::look_at(

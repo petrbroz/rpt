@@ -6,7 +6,7 @@ pub enum Material {
     Diffuse(Vec3),
     Metal(Vec3, f32 /* roughness */),
     Light(Vec3),
-    Glass(f32 /* ior */),
+    Glass(Vec3 /* attenuation */, f32 /* ior */),
     Normal,
 }
 
