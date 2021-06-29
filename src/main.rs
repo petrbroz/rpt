@@ -124,16 +124,22 @@ fn trace_ray(scene: &Scene, ray: &Ray, rng: &mut ThreadRng, depth: u32) -> Vec3 
                     albedo.z * c.z,
                 )
             },
-            Material::Dielectric(ior) => {
+            Material::Glass(ior) => {
                 let mut refraction_ratio = ior;
                 let mut normal = hit.n;
-                if dot(&ray.d, &hit.n) > 0.0 {
+                if dot(&ray.d, &hit.n) < 0.0 {
                     refraction_ratio = 1.0 / ior;
-                    normal = -&normal;
+                } else {
+                    normal = -&hit.n;
+                }
+                let mut new_ray = if let Some(mut refracted) = refract(&ray.d, &normal, refraction_ratio) {
+                    refracted.normalize();
+                    Ray::new(hit.p, refracted)
+                } else {
+                    let mut reflected = reflect(&ray.d, &normal);
+                    reflected.normalize();
+                    Ray::new(hit.p, reflected)
                 };
-                let mut refracted = refract(&ray.d, &normal, refraction_ratio);
-                refracted.normalize();
-                let mut new_ray = Ray::new(hit.p, refracted);
                 new_ray.o.x += 0.001 * new_ray.d.x;
                 new_ray.o.y += 0.001 * new_ray.d.y;
                 new_ray.o.z += 0.001 * new_ray.d.z;
@@ -213,7 +219,7 @@ fn main() {
         Sphere::new(Vec3::new(-2.1, 0.0, 0.0), 1.0, Material::Diffuse(Vec3::new(1.0, 1.0, 1.0))),
         Sphere::new(Vec3::new(2.1, 0.0, 0.0), 1.0, Material::Normal),
         //Sphere::new(Vec3::new(-1.5, -0.5, -2.5), 0.5, Material::Light(Vec3::new(1.0, 1.0, 0.0))),
-        Sphere::new(Vec3::new(-1.5, -0.5, -2.5), 0.5, Material::Dielectric(1.5)),
+        Sphere::new(Vec3::new(-1.5, -0.5, -2.5), 0.5, Material::Glass(1.5)),
         Sphere::new(Vec3::new(1.5, -0.5, -2.5), 0.5, Material::Metal(Vec3::new(1.0, 1.0, 1.0), 0.1)),
         Sphere::new(Vec3::new(0.0, -100.0, 0.0), 99.0, Material::Diffuse(Vec3::new(0.9, 0.7, 0.5))),
     );

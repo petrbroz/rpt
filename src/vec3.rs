@@ -69,16 +69,21 @@ pub fn reflect(v: &Vec3, n: &Vec3) -> Vec3 {
 }
 
 #[inline(always)]
-pub fn refract(v: &Vec3, n: &Vec3, ni_over_nt: f32) -> Vec3 {
+pub fn refract(v: &Vec3, n: &Vec3, ni_over_nt: f32) -> Option<Vec3> {
     let _v = normalize(v);
     let cos_theta = (-_v.x * n.x - _v.y * n.y - _v.z * n.z).min(1.0);
-    let r_out_perp = Vec3::new(
-        ni_over_nt * (_v.x + cos_theta * n.x),
-        ni_over_nt * (_v.y + cos_theta * n.y),
-        ni_over_nt * (_v.z + cos_theta * n.z),
-    );
-    let r_out_parallel = -((1.0 - length_squared(&r_out_perp)).abs()).sqrt() * n;
-    return &r_out_perp + &r_out_parallel;
+    let sin_theta = (1.0 - cos_theta * cos_theta).sqrt();
+    if ni_over_nt * sin_theta > 1.0 {
+        None
+    } else {
+        let r_out_perp = Vec3::new(
+            ni_over_nt * (_v.x + cos_theta * n.x),
+            ni_over_nt * (_v.y + cos_theta * n.y),
+            ni_over_nt * (_v.z + cos_theta * n.z),
+        );
+        let r_out_parallel = -((1.0 - length_squared(&r_out_perp)).abs()).sqrt() * n;
+        Some(&r_out_perp + &r_out_parallel)
+    }
 }
 
 impl ops::Neg for &Vec3 {
