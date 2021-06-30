@@ -4,5 +4,12 @@ Simple path tracer implemented in Rust.
 
 ## Examples
 
-![Screenshot 1](./screenshot-1.png)
-![Screenshot 2](./screenshot-2.png)
+### Spheres
+
+- Resolution: 512x512
+- Samples per pixel: 512
+- Recursion depth: 8
+- Number of threads: 16
+- Render time: 7.9s
+
+![Screenshot 1](./screenshot1.png)

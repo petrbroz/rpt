@@ -1,25 +1,33 @@
 use super::vec3::{ Vec3, dot, length_squared };
 use super::ray::Ray;
+use std::f32::consts::PI;
 
 #[derive(Debug, Copy, Clone)]
 pub enum Material {
-    Diffuse(Vec3),
+    Diffuse(Vec3, Texture),
     Metal(Vec3, f32 /* roughness */),
     Light(Vec3),
     Glass(Vec3 /* attenuation */, f32 /* ior */),
     Normal,
 }
 
+#[derive(Debug, Copy, Clone)]
+pub enum Texture {
+    None,
+    Checkered(Vec3 /* first color */, Vec3 /* second color */, f32 /* scale */),
+}
+
 pub struct Hit {
     pub p: Vec3,
     pub n: Vec3,
     pub t: f32,
+    pub uv: (f32, f32),
     pub m: Material,
 }
 
 impl Hit {
-    pub fn new(p: Vec3, n: Vec3, t: f32, m: Material ) -> Hit {
-        Hit { p, n, t, m }
+    pub fn new(p: Vec3, n: Vec3, t: f32, uv: (f32, f32), m: Material ) -> Hit {
+        Hit { p, n, t, uv, m }
     }
 }
 
@@ -65,6 +73,15 @@ impl Sphere {
     }
 }
 
+fn get_sphere_uv(p: &Vec3) -> (f32, f32) {
+    let theta = (-p.y).acos();
+    let phi = (-p.z).atan2(p.x) + PI;
+    (
+        phi / (2.0 * PI),
+        theta / PI,
+    )
+}
+
 impl Hitable for Sphere {
     fn hit(&self, ray: &Ray) -> Option<Hit> {
         let oc = &ray.o - &self.c;
@@ -80,12 +97,12 @@ impl Hitable for Sphere {
                 let p = ray.point_at(t1);
                 let mut n = &p - &self.c;
                 n.normalize();
-                Some(Hit::new(p, n, t1, self.m))
+                Some(Hit::new(p, n, t1, get_sphere_uv(&n), self.m))
             } else if t2 > 0.0 {
                 let p = ray.point_at(t2);
                 let mut n = &p - &self.c;
                 n.normalize();
-                Some(Hit::new(p, n, t2, self.m))
+                Some(Hit::new(p, n, t2, get_sphere_uv(&n), self.m))
             } else {
                 None
             }

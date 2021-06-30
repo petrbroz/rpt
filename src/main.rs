@@ -15,12 +15,12 @@ use rand::{ Rng };
 use rand::rngs::ThreadRng;
 use vec3::{ Vec3, normalize, length_squared, reflect, dot, refract };
 use ray::Ray;
-use scene::{ Hitable, Scene, Sphere, Material };
+use scene::{ Hitable, Scene, Sphere, Material, Texture };
 use camera::{ Camera, PerspectiveCamera };
 
-const IMAGE_WIDTH: u32 = 1024;
-const IMAGE_HEIGHT: u32 = 1024;
-const PIXEL_SAMPLES: u32 = 255;
+const IMAGE_WIDTH: u32 = 512;
+const IMAGE_HEIGHT: u32 = 512;
+const PIXEL_SAMPLES: u32 = 512;
 const MAX_DEPTH: u32 = 8;
 const LENS_RADIUS: f32 = 0.1;
 const FOCAL_DISTANCE: f32 = 8.0;
@@ -46,7 +46,7 @@ fn trace_ray(scene: &Scene, ray: &Ray, rng: &mut ThreadRng, depth: u32) -> Vec3 
 
     if let Some(hit) = scene.hit(ray) {
         match hit.m {
-            Material::Diffuse(albedo) => {
+            Material::Diffuse(mut albedo, texture) => {
                 let mut rand = Vec3::new(0.0, 0.0, 0.0);
                 loop {
                     let (u, v, w): (f32, f32, f32) = (rng.gen(), rng.gen(), rng.gen());
@@ -64,6 +64,14 @@ fn trace_ray(scene: &Scene, ray: &Ray, rng: &mut ThreadRng, depth: u32) -> Vec3 
                 new_ray.o.y += 0.001 * new_ray.d.y;
                 new_ray.o.z += 0.001 * new_ray.d.z;
                 let c = trace_ray(scene, &new_ray, rng, depth + 1);
+                if let Texture::Checkered(color1, color2, scale) = texture {
+                    let (u, v) = hit.uv;
+                    albedo = if (scale * u).sin() * (10.0 * scale * v).sin() > 0.0 {
+                        color1
+                    } else {
+                        color2
+                    };
+                }
                 Vec3::new(
                     albedo.x * c.x,
                     albedo.y * c.y,
@@ -149,7 +157,7 @@ fn trace_ray(scene: &Scene, ray: &Ray, rng: &mut ThreadRng, depth: u32) -> Vec3 
                     0.5 * (hit.n.y + 1.0),
                     0.5 * (hit.n.z + 1.0),
                 )
-            }
+            },
         }
     } else {
         // Render background
@@ -208,20 +216,22 @@ fn render_scene(scene: Arc<Scene>, camera: Arc<PerspectiveCamera>, num_threads: 
 }
 
 fn main() {
+    let white = Vec3::new(1.0, 1.0, 1.0);
+    let black = Vec3::new(0.0, 0.0, 0.0);
     let spheres: Vec<Sphere> = vec!(
-        Sphere::new(Vec3::new(0.0, -100.0, 0.0), 99.0, Material::Diffuse(Vec3::new(0.9, 0.9, 0.9))),
+        Sphere::new(Vec3::new(0.0, -100.0, 0.0), 99.0, Material::Diffuse(white, Texture::Checkered(white, black, 200.0))),
 
-        Sphere::new(Vec3::new(-2.5, 0.0, -2.5), 1.0, Material::Metal(Vec3::new(1.0, 1.0, 1.0), 0.0)),
+        Sphere::new(Vec3::new(-2.5, 0.0, -2.5), 1.0, Material::Metal(white, 0.0)),
         Sphere::new(Vec3::new(-2.5, 0.0, 0.0),  1.0, Material::Metal(Vec3::new(0.9, 0.6, 0.3), 0.1)),
-        Sphere::new(Vec3::new(-2.5, 0.0, 2.5),  1.0, Material::Metal(Vec3::new(1.0, 1.0, 1.0), 0.2)),
+        Sphere::new(Vec3::new(-2.5, 0.0, 2.5),  1.0, Material::Metal(white, 0.2)),
 
         Sphere::new(Vec3::new(0.0, 0.0, -2.5),  1.0, Material::Normal),
-        Sphere::new(Vec3::new(0.0, 0.0, 0.0),   1.0, Material::Diffuse(Vec3::new(1.0, 1.0, 1.0))),
+        Sphere::new(Vec3::new(0.0, 0.0, 0.0),   1.0, Material::Diffuse(white, Texture::None)),
         Sphere::new(Vec3::new(0.0, 0.0, 2.5),   1.0, Material::Light(Vec3::new(1.0, 1.0, 0.0))),
 
-        Sphere::new(Vec3::new(2.5, 0.0, -2.5),  1.0, Material::Glass(Vec3::new(1.0, 1.0, 1.0), 2.0)),
+        Sphere::new(Vec3::new(2.5, 0.0, -2.5),  1.0, Material::Glass(white, 2.0)),
         Sphere::new(Vec3::new(2.5, 0.0, 0.0),   1.0, Material::Glass(Vec3::new(0.3, 0.6, 0.9), 1.75)),
-        Sphere::new(Vec3::new(2.5, 0.0, 2.5),   1.0, Material::Glass(Vec3::new(1.0, 1.0, 1.0), 1.5)),
+        Sphere::new(Vec3::new(2.5, 0.0, 2.5),   1.0, Material::Glass(white, 1.5)),
     );
     let scene = Arc::new(Scene::new(spheres));
     let camera = Arc::new(PerspectiveCamera::look_at(
