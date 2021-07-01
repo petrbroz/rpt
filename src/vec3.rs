@@ -52,6 +52,14 @@ pub fn length(v: &Vec3) -> f32 {
 }
 
 #[inline(always)]
+pub fn distance(v1: &Vec3, v2: &Vec3) -> f32 {
+    let dx = v2.x - v1.x;
+    let dy = v2.y - v1.y;
+    let dz = v2.z - v1.z;
+    (dx * dx + dy * dy + dz * dz).sqrt()
+}
+
+#[inline(always)]
 pub fn normalize(v: &Vec3) -> Vec3 {
     let len = length(v);
     (1.0 / len) * v

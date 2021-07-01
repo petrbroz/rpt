@@ -1,7 +1,11 @@
+mod math;
 mod vec3;
 mod ray;
 mod scene;
 mod camera;
+mod bbox;
+mod mat4;
+mod xform;
 
 extern crate png;
 extern crate rand;
@@ -20,7 +24,7 @@ use camera::{ Camera, PerspectiveCamera };
 
 const IMAGE_WIDTH: u32 = 512;
 const IMAGE_HEIGHT: u32 = 512;
-const PIXEL_SAMPLES: u32 = 512;
+const PIXEL_SAMPLES: u32 = 128;
 const MAX_DEPTH: u32 = 8;
 const LENS_RADIUS: f32 = 0.1;
 const FOCAL_DISTANCE: f32 = 8.0;

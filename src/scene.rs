@@ -1,5 +1,6 @@
 use super::vec3::{ Vec3, dot, length_squared };
 use super::ray::Ray;
+use super::math::{ quadratic, Roots };
 use std::f32::consts::PI;
 
 #[derive(Debug, Copy, Clone)]
